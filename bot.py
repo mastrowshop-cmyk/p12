@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
+
 # === АВТОУДАЛЕНИЕ СЛУЖЕБНЫХ СООБЩЕНИЙ ===
 async def auto_delete(msg, delay=5):
     await asyncio.sleep(delay)
@@ -100,7 +101,7 @@ async def forward_to_admins(message: types.Message):
             reply_markup=admin_keyboard
         )
 
-    # добавляем инфу про автора
+    # инфа о пользователе
     info = f"👤 От: {username}\n🆔 ID: <code>{user.id}</code>"
 
     await bot.send_message(
@@ -119,7 +120,15 @@ async def process_buttons(callback: types.CallbackQuery):
     action = callback.data
     msg = callback.message
 
-    # одобрить → публиковать в канал
+    # удалить inline-меню
+    try:
+        await msg.edit_reply_markup(None)
+    except:
+        pass
+
+    # =======================
+    # ПРИНЯТЬ → публикация
+    # =======================
     if action == "approve":
         try:
             if msg.photo:
@@ -143,21 +152,27 @@ async def process_buttons(callback: types.CallbackQuery):
         await callback.answer()
         return
 
-    # отклонить
+    # =======================
+    # ОТКЛОНИТЬ
+    # =======================
     if action == "reject":
         m = await msg.answer("❌ Сообщение отклонено.")
         asyncio.create_task(auto_delete(m))
         await callback.answer()
         return
 
-    # режим ответа
+    # =======================
+    # ОТВЕТИТЬ
+    # =======================
     if action == "reply":
         m = await msg.answer("Напишите ответ реплаем на сообщение с ID пользователя.")
         asyncio.create_task(auto_delete(m))
         await callback.answer()
         return
 
-    # забанить
+    # =======================
+    # БАН
+    # =======================
     if action == "ban":
         content = msg.reply_to_message.text if msg.reply_to_message else ""
         user_id = None
@@ -181,13 +196,12 @@ async def process_buttons(callback: types.CallbackQuery):
             await callback.answer()
             return
 
-        # добавляем в banlist
+        # запись в банлист
         with open("banlist.txt", "a") as f:
             f.write(str(user_id) + "\n")
 
         m = await msg.answer(f"⛔ Пользователь <code>{user_id}</code> забанен.")
         asyncio.create_task(auto_delete(m))
-
         await callback.answer()
         return
 
