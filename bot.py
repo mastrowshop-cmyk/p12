@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import TOKEN, ADMIN_GROUP_ID, CHANNEL_ID
@@ -7,6 +8,14 @@ logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
+
+# === АВТОУДАЛЕНИЕ СЛУЖЕБНЫХ СООБЩЕНИЙ ===
+async def auto_delete(msg, delay=5):
+    await asyncio.sleep(delay)
+    try:
+        await msg.delete()
+    except:
+        pass
 
 
 # === КЛАВИАТУРА ДЛЯ АДМИНОВ ===
@@ -38,14 +47,15 @@ async def start(message: types.Message):
     await message.answer("Подслушано АК")
 
 
-# === ПОЛЬЗОВАТЕЛЬ ОТПРАВЛЯЕТ СООБЩЕНИЕ ===
+# === ПОЛЬЗОВАТЕЛЬ ПИШЕТ БОТУ ===
 @dp.message_handler(content_types=types.ContentTypes.ANY)
 async def forward_to_admins(message: types.Message):
     user = message.from_user
 
     # проверка бана
     if is_banned(user.id):
-        await message.answer("⛔ Вы забанены и не можете отправлять сообщения.")
+        m = await message.answer("⛔ Вы забанены и не можете отправлять сообщения.")
+        asyncio.create_task(auto_delete(m))
         return
 
     username = f"@{user.username}" if user.username else user.full_name
@@ -53,7 +63,7 @@ async def forward_to_admins(message: types.Message):
 
     sent_msg = None
 
-    # отправляем сообщение админам
+    # отправка сообщения админу
     if message.photo:
         sent_msg = await bot.send_photo(
             ADMIN_GROUP_ID,
@@ -90,7 +100,7 @@ async def forward_to_admins(message: types.Message):
             reply_markup=admin_keyboard
         )
 
-    # добавляем инфо о пользователе
+    # добавляем инфу про автора
     info = f"👤 От: {username}\n🆔 ID: <code>{user.id}</code>"
 
     await bot.send_message(
@@ -99,7 +109,8 @@ async def forward_to_admins(message: types.Message):
         reply_to_message_id=sent_msg.message_id
     )
 
-    await message.answer("Отправлено 👌")
+    m = await message.answer("Отправлено 👌")
+    asyncio.create_task(auto_delete(m))
 
 
 # === ОБРАБОТКА КНОПОК ===
@@ -108,7 +119,7 @@ async def process_buttons(callback: types.CallbackQuery):
     action = callback.data
     msg = callback.message
 
-    # кнопка "Принять" — публикация в канал
+    # одобрить → публиковать в канал
     if action == "approve":
         try:
             if msg.photo:
@@ -122,28 +133,32 @@ async def process_buttons(callback: types.CallbackQuery):
             else:
                 await bot.send_message(CHANNEL_ID, msg.text)
 
-            await msg.answer("✅ Опубликовано в канале")
+            m = await msg.answer("✅ Опубликовано в канале")
+            asyncio.create_task(auto_delete(m))
+
         except Exception as e:
-            await msg.answer(f"Ошибка: {e}")
+            m = await msg.answer(f"Ошибка публикации: {e}")
+            asyncio.create_task(auto_delete(m))
 
         await callback.answer()
         return
 
-    # кнопка "Отклонить"
+    # отклонить
     if action == "reject":
-        await msg.answer("❌ Сообщение отклонено.")
+        m = await msg.answer("❌ Сообщение отклонено.")
+        asyncio.create_task(auto_delete(m))
         await callback.answer()
         return
 
-    # кнопка "Ответить"
+    # режим ответа
     if action == "reply":
-        await msg.answer("Напишите ответ реплаем на сообщение с ID пользователя.")
+        m = await msg.answer("Напишите ответ реплаем на сообщение с ID пользователя.")
+        asyncio.create_task(auto_delete(m))
         await callback.answer()
         return
 
-    # кнопка "Забанить"
+    # забанить
     if action == "ban":
-        # достаём ID пользователя из reply
         content = msg.reply_to_message.text if msg.reply_to_message else ""
         user_id = None
 
@@ -161,15 +176,18 @@ async def process_buttons(callback: types.CallbackQuery):
                     pass
 
         if not user_id:
-            await msg.answer("❌ Не могу найти ID пользователя.")
+            m = await msg.answer("❌ Не могу найти ID пользователя.")
+            asyncio.create_task(auto_delete(m))
             await callback.answer()
             return
 
-        # записываем в banlist.txt
+        # добавляем в banlist
         with open("banlist.txt", "a") as f:
             f.write(str(user_id) + "\n")
 
-        await msg.answer(f"⛔ Пользователь <code>{user_id}</code> забанен.")
+        m = await msg.answer(f"⛔ Пользователь <code>{user_id}</code> забанен.")
+        asyncio.create_task(auto_delete(m))
+
         await callback.answer()
         return
 
@@ -197,13 +215,16 @@ async def admin_reply(message: types.Message):
                 pass
 
     if not user_id:
-        await message.answer("❌ Не найден ID пользователя.")
+        m = await message.answer("❌ Не найден ID пользователя.")
+        asyncio.create_task(auto_delete(m))
         return
 
     await bot.send_message(user_id, f"Ответ администрации:\n\n{message.text}")
-    await message.answer("Ответ отправлен 👍")
+
+    m = await message.answer("Ответ отправлен 👍")
+    asyncio.create_task(auto_delete(m))
 
 
-# === СТАРТ ===
+# === СТАРТ БОТА ===
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
